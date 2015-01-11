@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Demarcation</title>
+    <link rel="stylesheet" href="css/style.css">
+    <script type="text/javascript" src="js/paper-full.min.js"></script>
+    <script type="text/paperscript" canvas="canvas">
+        var inner = new Path.Circle({
+            position: [0, 0],
+            radius: 10,
+            insert: false
+        });
+        var outer = new Path.Circle({
+            position: [0, 0],
+            radius: 20,
+            insert: false
+        });
+        var pawn = outer.subtract(inner);
+        pawn.fillColor = '#ff0000';
+        var path = new Path();
+        path.strokeColor = '#ff0000';
+        path.strokeWidth = 10;
+        path.strokeCap = 'round';
+        path.strokeJoin = 'round';
+
+        view.center = [0, 0];
+
+        var speed = 1.5;
+        var turnSpeed = 2;
+        var dirAngle = 180;
+
+        var mousePos = view.center;
+
+        function onFrame(event) {
+            pawn.position += [Math.sin(dirAngle * Math.PI / 180) * speed, Math.cos(dirAngle * Math.PI / 180) * speed];
+            if (Key.isDown('left')) {
+                dirAngle += turnSpeed;
+            }
+            if (Key.isDown('right')) {
+                dirAngle -= turnSpeed;
+            }
+            path.add(pawn.position);
+            view.center = [0, pawn.position.y];
+        }
+
+        function onMouseMove(event) {
+            mousePos = event.point;
+        }
+    </script>
+</head>
+<body style="background:white">
+    <canvas id="canvas" resize></canvas>
+</body>
+</html>
