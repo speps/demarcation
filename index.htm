@@ -6,50 +6,59 @@
     <link rel="stylesheet" href="css/style.css">
     <script type="text/javascript" src="js/paper-full.min.js"></script>
     <script type="text/paperscript" canvas="canvas">
-        var inner = new Path.Circle({
-            position: [0, 0],
-            radius: 10,
-            insert: false
-        });
-        var outer = new Path.Circle({
-            position: [0, 0],
-            radius: 20,
-            insert: false
-        });
-        var pawn = outer.subtract(inner);
-        pawn.fillColor = '#ff0000';
-        var path = new Path();
-        path.strokeColor = '#ff0000';
-        path.strokeWidth = 10;
-        path.strokeCap = 'round';
-        path.strokeJoin = 'round';
+        var config = {
+            baseSpeed: 1.5,
+            turnSpeed: 2,
+            startGap: 80
+        };
+
+        function Player(startPos, color, keyLeft, keyRight) {
+            var inner = new Path.Circle({
+                position: [0, 0],
+                radius: 10,
+                insert: false
+            });
+            var outer = new Path.Circle({
+                position: [0, 0],
+                radius: 20,
+                insert: false
+            });
+            this.pawn = outer.subtract(inner);
+            this.pawn.fillColor = color;
+            this.pawn.position = startPos;
+            var path = new Path();
+            path.strokeColor = color;
+            path.strokeWidth = 10;
+            path.strokeCap = 'round';
+            path.strokeJoin = 'round';
+            this.dirAngle = 180;
+
+            this.advance = function() {
+                this.pawn.position += [Math.sin(this.dirAngle * Math.PI / 180) * config.baseSpeed, Math.cos(this.dirAngle * Math.PI / 180) * config.baseSpeed];
+                if (Key.isDown(keyLeft)) {
+                    this.dirAngle += config.turnSpeed;
+                }
+                if (Key.isDown(keyRight)) {
+                    this.dirAngle -= config.turnSpeed;
+                }
+                path.add(this.pawn.position);
+            };
+        };
 
         view.center = [0, 0];
 
-        var speed = 1.5;
-        var turnSpeed = 2;
-        var dirAngle = 180;
-
-        var mousePos = view.center;
+        var p1 = new Player([-config.startGap / 2, 0], '#ff0000', 'a', 'd');
+        var p2 = new Player([config.startGap / 2, 0], '#0000ff', 'left', 'right');
 
         function onFrame(event) {
-            pawn.position += [Math.sin(dirAngle * Math.PI / 180) * speed, Math.cos(dirAngle * Math.PI / 180) * speed];
-            if (Key.isDown('left')) {
-                dirAngle += turnSpeed;
-            }
-            if (Key.isDown('right')) {
-                dirAngle -= turnSpeed;
-            }
-            path.add(pawn.position);
-            view.center = [0, pawn.position.y];
-        }
-
-        function onMouseMove(event) {
-            mousePos = event.point;
+            p1.advance();
+            p2.advance();
+            view.center = [0, Math.min(p1.pawn.position.y, p2.pawn.position.y)];
         }
     </script>
 </head>
 <body style="background:white">
-    <canvas id="canvas" resize></canvas>
+    <canvas style="position:absolute" id="canvas" data-paper-resize="true"></canvas>
+    <div id="footer" class="footer"><b>Demarcation</b> &mdash; <span style="color:#f00;"><b>Player 1</b></span> Use <b>A</b> and <b>D</b>. <span style="color:#00f;"><b>Player 2</b></span> Use <b>&#8592;</b> and <b>&#8594;</b>. Made with the amazing <a href="http://paperjs.org">Paper.js</a></div>
 </body>
 </html>
