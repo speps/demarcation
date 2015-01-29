@@ -2,15 +2,39 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>Demarcation</title>
+    <title>DEMARCATION</title>
     <link rel="stylesheet" href="css/style.css">
     <script type="text/javascript" src="js/paper-full.min.js"></script>
+    <script type="text/javascript" src="js/delaunay.js"></script>
+    <script type="text/javascript">
+        function hashInts(i0, i1) {
+            return i0 < i1 ? i0.toString() + '_' + i1.toString() : i1.toString() + '_' + i0.toString();
+        }
+    </script>
     <script type="text/paperscript" canvas="canvas">
         var config = {
             baseSpeed: 1.5,
             turnSpeed: 2,
             startGap: 80
         };
+
+        function getIntersection(p0, d0, p1, d1) {
+            var ip = d0.x * d1.y - d1.x * d0.y;
+            if (ip == 0) {
+                return undefined;
+            }
+            var u = p0 - p1;
+            var s = (d0.x * u.y - d0.y * u.x) / ip;
+            var t = (d1.x * u.y - d1.y * u.x) / ip;
+            return p0 + d0 * t;
+        }
+
+        function getCircumcenter(v0, v1, v2) {
+            var d = 2 * (v0.x * (v1.y - v2.y) + v1.x * (v2.y - v0.y) + v2.x * (v0.y - v1.y));
+            var ux = ((v0.x * v0.x + v0.y * v0.y) * (v1.y - v2.y) + (v1.x * v1.x + v1.y * v1.y) * (v2.y - v0.y) + (v2.x * v2.x + v2.y * v2.y) * (v0.y - v1.y)) / d;
+            var uy = ((v0.x * v0.x + v0.y * v0.y) * (v2.x - v1.x) + (v1.x * v1.x + v1.y * v1.y) * (v0.x - v2.x) + (v2.x * v2.x + v2.y * v2.y) * (v1.x - v0.x)) / d;
+            return new Point(ux, uy);
+        }
 
         function Player(startPos, color, keyLeft, keyRight) {
             var inner = new Path.Circle({
@@ -34,7 +58,9 @@
             this.dirAngle = 180;
 
             this.advance = function() {
-                this.pawn.position += [Math.sin(this.dirAngle * Math.PI / 180) * config.baseSpeed, Math.cos(this.dirAngle * Math.PI / 180) * config.baseSpeed];
+                this.pawn.position += [
+                    Math.sin(this.dirAngle * Math.PI / 180) * config.baseSpeed,
+                    Math.cos(this.dirAngle * Math.PI / 180) * config.baseSpeed];
                 if (Key.isDown(keyLeft)) {
                     this.dirAngle += config.turnSpeed;
                 }
@@ -45,20 +71,282 @@
             };
         };
 
+        function Voronoi(points) {
+            var vertices = points.map(function(p) { return [p.x, p.y]; });
+            var triangles = Delaunay.triangulate(vertices);
+
+            // find adjacent faces
+            var adjFaces = [];
+            for (var i = 0; i < triangles.length / 3; i++) {
+                var i0 = triangles[i * 3 + 0];
+                var i1 = triangles[i * 3 + 1];
+                var i2 = triangles[i * 3 + 2];
+
+                // build adjacent faces
+                if (adjFaces[i0] == undefined) {
+                    adjFaces[i0] = [];
+                }
+                adjFaces[i0].push(i);
+                if (adjFaces[i1] == undefined) {
+                    adjFaces[i1] = [];
+                }
+                adjFaces[i1].push(i);
+                if (adjFaces[i2] == undefined) {
+                    adjFaces[i2] = [];
+                }
+                adjFaces[i2].push(i);
+            }
+
+            // build unique edges
+            var edges = [], edgeHashes = [];
+            for (var i = 0; i < triangles.length / 3; i++) {
+                var i0 = triangles[i * 3 + 0];
+                var i1 = triangles[i * 3 + 1];
+                var i2 = triangles[i * 3 + 2];
+
+                var h0 = hashInts(i0, i1);
+                var h1 = hashInts(i1, i2);
+                var h2 = hashInts(i2, i0);
+                if (edges[h0] == undefined) {
+                    edges[h0] = {'indices':[i0, i1], 'faces':[i]};
+                    edgeHashes.push(h0);
+                } else {
+                    edges[h0].faces.push(i);
+                }
+                if (edges[h1] == undefined) {
+                    edges[h1] = {'indices':[i1, i2], 'faces':[i]};
+                    edgeHashes.push(h1);
+                } else {
+                    edges[h1].faces.push(i);
+                }
+                if (edges[h2] == undefined) {
+                    edges[h2] = {'indices':[i2, i0], 'faces':[i]};
+                    edgeHashes.push(h2);
+                } else {
+                    edges[h2].faces.push(i);
+                }
+            }
+
+            // build adjacent verts
+            var adjVerts = [];
+            for (var i = 0; i < edgeHashes.length; i++) {
+                var edge = edges[edgeHashes[i]];
+                var i0 = edge.indices[0];
+                var i1 = edge.indices[1];
+                if (adjVerts[i0] == undefined) {
+                    adjVerts[i0] = [];
+                }
+                adjVerts[i0].push(i1);
+                if (adjVerts[i1] == undefined) {
+                    adjVerts[i1] = [];
+                }
+                adjVerts[i1].push(i0);
+            }
+
+            // find circumcenters
+            var ccenters = [];
+            for (var i = 0; i < triangles.length / 3; i++) {
+                var v0 = points[triangles[i * 3 + 0]];
+                var v1 = points[triangles[i * 3 + 1]];
+                var v2 = points[triangles[i * 3 + 2]];
+                ccenters[i] = getCircumcenter(v0, v1, v2);
+            }
+
+            var vert2poly = [];
+            var poly2vert = [];
+
+            // build voronoi polygons
+            var voronoiPolys = [];
+            for (var i = 0; i < points.length; i++) {
+                var total = 0, v0, v1;
+                var faces = adjFaces[i];
+                for (var j = 0; j < faces.length; j++) {
+                    var i0 = triangles[faces[j] * 3 + 0];
+                    var i1 = triangles[faces[j] * 3 + 1];
+                    var i2 = triangles[faces[j] * 3 + 2];
+                    if (i0 == i) {
+                        v0 = points[i1] - points[i0];
+                        v1 = points[i2] - points[i0];
+                    } else if (i1 == i) {
+                        v0 = points[i2] - points[i1];
+                        v1 = points[i0] - points[i1];
+                    } else if (i2 == i) {
+                        v0 = points[i0] - points[i2];
+                        v1 = points[i1] - points[i2];
+                    }
+                    total += v1.getDirectedAngle(v0);
+                }
+                if (Math.round(total) >= 360) {
+                    var poly = faces.map(function(item) {
+                        return ccenters[item];
+                    }).sort(function(a,b) {
+                        var va = (a - points[i]).angle;
+                        var vb = (b - points[i]).angle;
+                        return va < vb ? -1 : ((va > vb) ? 1 : 0);
+                    });
+                    var index = voronoiPolys.length;
+                    voronoiPolys.push(poly);
+                    vert2poly[i] = index;
+                    poly2vert[index] = i;
+                }
+            }
+
+            this.getPolys = function() {
+                return voronoiPolys;
+            };
+            this.getAdjacentPolys = function(i) {
+                var v = adjVerts[poly2vert[i]];
+                var result = [];
+                for (var i = 0; i < v.length; i++) {
+                    var p = vert2poly[v[i]];
+                    if (p != undefined) {
+                        result.push(p);
+                    }
+                }
+                return result;
+            };
+        }
+
+        function Map(size) {
+            this.generatePoints = function(minimumDistance, nSamplesPerIteration) {
+                var cellSize = minimumDistance / Math.sqrt(2.0);
+                var gridSize = new Size(Math.ceil(size.width / cellSize), Math.ceil(size.height / cellSize));
+                var grid = [];
+                var computeGridIndex = function(point) {
+                    return new Point(Math.floor(point.x / cellSize), Math.floor(point.y / cellSize));
+                };
+                var randomPoint = function() {
+                    var t = 2.0 * Math.PI * Math.random();
+                    var r = minimumDistance + Math.sqrt(Math.random()) * minimumDistance;
+                    return new Point(r * Math.cos(t), r * Math.sin(t));
+                };
+
+                var result = [];
+                var activePoints = [];
+
+                // generate first point
+                {
+                    var firstPoint = new Point(Math.random() * size.width, Math.random() * size.height);
+                    activePoints.push(firstPoint);
+                    var gridIndex = computeGridIndex(firstPoint);
+                    grid[gridIndex.y * gridSize.width + gridIndex.x] = firstPoint;
+                    result.push(firstPoint);
+                }
+
+                while (activePoints.length > 0) {
+                    var activePointIndex = Math.floor(Math.random() * activePoints.length);
+                    var point = activePoints[activePointIndex];
+                    var found = false;
+                    for (var i = 0; i < nSamplesPerIteration; i++) {
+                        var nextPoint = point + randomPoint();
+                        if (nextPoint.x < 0 || nextPoint.x > size.width || nextPoint.y < 0 || nextPoint.y > size.height) {
+                            continue;
+                        }
+                        var gridIndex = computeGridIndex(nextPoint);
+                        var tooClose = false;
+                        for (var x = Math.max(0, gridIndex.x - 2); x < Math.min(gridSize.width, gridIndex.x + 3) && !tooClose; x++) {
+                            for (var y = Math.max(0, gridIndex.y - 2); y < Math.min(gridSize.height, gridIndex.y + 3) && !tooClose; y++) {
+                                var index = y * gridSize.width + x;
+                                if (grid[index] != undefined && grid[index].getDistance(nextPoint) < minimumDistance) {
+                                    tooClose = true;
+                                }
+                            }
+                        }
+
+                        if (!tooClose) {
+                            found |= true;
+                            activePoints.push(nextPoint);
+                            grid[gridIndex.y * gridSize.width + gridIndex.x] = nextPoint;
+                            result.push(nextPoint);
+                        }
+                    }
+
+                    if (!found) {
+                        activePoints.splice(activePointIndex, 1);
+                    }
+                }
+
+                return result;
+            };
+        };
+
         view.center = [0, 0];
 
-        var p1 = new Player([-config.startGap / 2, 0], '#ff0000', 'a', 'd');
-        var p2 = new Player([config.startGap / 2, 0], '#0000ff', 'left', 'right');
+        var minDist = 40;
+        var mapSize = new Size(1000, 2000);
+        var map = new Map(mapSize);
+        var points = map.generatePoints(minDist, 10);
+        var voronoi = new Voronoi(points);
+
+        // var debug = [347.7261994034052, 137.704567797482, 210.9421964985903, 73.03803734290695, 239.85698237677906, 249.20378882018804, 333.8827709489882, 10.278198792623542, 363.9630312899947, 279.3360611607525, 90.61642445991896, 286.9773433890435, 125.04208545573887, 206.65241787308446, 5.8692692214565625, 129.40581370647755, 93.745825230287, 8.047227332069852];
+        // points = [];
+        // for (var i = 0; i < debug.length / 2; i++) {
+        //     points.push(new Point(debug[i * 2 + 0], debug[i * 2 + 1]));
+        // }
+        // var test = [];
+        // for (var i = 0; i < points.length; i++) {
+        //     test.push(points[i].x);
+        //     test.push(points[i].y);
+        // }
+        // console.log(test);
+
+        // var bg = new Path.Rectangle(-mapSize / 2, mapSize);
+        // bg.fillColor = '#cccccc';
+
+        var polys = voronoi.getPolys();
+        var paths = [];
+        for (var i = 0; i < polys.length; i++) {
+            var path = new Path(polys[i].concat(polys[i][0]));
+            path.pivot = [0, 0];
+            path.position = -mapSize / 2;
+            path.fillColor = '#00cc00';
+            path.strokeColor = '#003300';
+            paths.push(path);
+
+            var r = path.rasterize();
+            path.remove();
+        }
+
+        // for (var i = 0; i < points.length; i++) {
+        //     var c = new Path.Circle({
+        //         position: points[i] - mapSize / 2,
+        //         radius: 2
+        //     });
+        //     c.fillColor = '#000000';
+        // }
+
+        var p1 = new Player([-config.startGap / 2, 0], '#ff0000', 's', 'd');
+        var p2 = new Player([+config.startGap / 2, 0], '#0000ff', 'left', 'right');
+
+        var mousePos = view.center;
 
         function onFrame(event) {
             p1.advance();
             p2.advance();
             view.center = [0, Math.min(p1.pawn.position.y, p2.pawn.position.y)];
+
+            for (var i = 0; i < paths.length; i++) {
+                paths[i].fillColor = '#00cc00';
+            }
+            for (var i = 0; i < paths.length; i++) {
+                var hit = paths[i].hitTest(mousePos, {fill:true});
+                if (hit) {
+                    paths[i].fillColor = '#cc0000';
+                    var adj = voronoi.getAdjacentPolys(i);
+                    for (var j = 0; j < adj.length; j++) {
+                        paths[adj[j]].fillColor = '#ffff00';
+                    }
+                }
+            }
+        }
+
+        function onMouseMove(event) {
+            mousePos = event.point;
         }
     </script>
 </head>
-<body style="background:white">
-    <canvas style="position:absolute" id="canvas" data-paper-resize="true"></canvas>
-    <div id="footer" class="footer"><b>Demarcation</b> &mdash; <span style="color:#f00;"><b>Player 1</b></span> Use <b>A</b> and <b>D</b>. <span style="color:#00f;"><b>Player 2</b></span> Use <b>&#8592;</b> and <b>&#8594;</b>. Made with the amazing <a href="http://paperjs.org">Paper.js</a></div>
+<body>
+    <canvas id="canvas"></canvas>
+    <div id="footer"><b>DEMARCATION</b> &mdash; <span style="color:#f00;"><b>Player 1</b></span> Use <b>S</b> and <b>D</b>. <span style="color:#00f;"><b>Player 2</b></span> Use <b>&#8592;</b> and <b>&#8594;</b>. Made with the amazing <a href="http://paperjs.org">Paper.js</a>.</div>
 </body>
 </html>

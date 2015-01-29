@@ -1,4 +1,29 @@
 body {
-    margin: 0;
-    overflow: hidden;
+	margin: 0;
+	overflow: hidden;
+	font-family: sans-serif;
+	background: #000;
+}
+
+canvas {
+	position:absolute;
+	left:50%;
+	top:0%;
+	margin-left: -400px;
+	display: block;
+	width: 800px;
+	height:100%;
+	background: #fff;
+}
+
+#footer {
+	position:absolute;
+	color:#fff;
+	background: #000;
+	bottom: 0%;
+	width:100%;
+}
+
+#footer a {
+	color:#fff;
 }
