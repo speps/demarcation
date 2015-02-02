@@ -13,7 +13,18 @@
             baseSpeed: 1.5,
             turnSpeed: 2,
             startGap: 80,
-            pathRes: 10
+            pathRes: 10,
+            colors:{
+                grass: '#5BC75E',
+                forest: '#305A3C',
+                mountain: '#C69128',
+                mountainTop: '#FFFFFF'
+            },
+            probs:{
+                mountain: 0.1,
+                forest: 0.2
+            },
+            forestSize: 3
         };
 
         function Player(startPos, color, keyLeft, keyRight) {
@@ -272,8 +283,11 @@
                 }
             }
 
+            this.getPoint = function(i) {
+                return points[poly2vert[i]];
+            };
             this.getPolys = function() {
-                return voronoiPolys;
+                return voronoiPolys.slice();
             };
             this.getAdjacentPolys = function(i) {
                 var v = adjVerts[poly2vert[i]];
@@ -288,26 +302,97 @@
             };
         }
 
+        var mapSize = new Size(800, 6000);
+
+        function Map(voronoi) {
+            var polys = voronoi.getPolys().map(function(p, i) { return {poly:p, center:voronoi.getPoint(i)}; });
+            var queue = polys.map(function(p,i) { return i; });
+            var count;
+            // mountains
+            {
+                this.mountains = [];
+                count = 0;
+                while (queue.length > 0 && count < (config.probs.mountain * polys.length)) {
+                    var index = Math.floor(Math.random() * queue.length);
+                    var poly = polys[queue[index]].poly;
+                    var adjPolys = voronoi.getAdjacentPolys(queue[index]);
+                    queue.splice(index, 1);
+                    var mountain = [new Path({segments:poly, pivot:[0, 0], position:-mapSize/2, fillColor:config.colors.mountainTop})];
+                    for (var i = 0; i < adjPolys.length; i++) {
+                        var adjPoly = polys[adjPolys[i]].poly;
+                        var adjIndex = queue.indexOf(adjPolys[i]);
+                        if (adjIndex != -1) {
+                            mountain.push(new Path({segments:adjPoly, pivot: [0, 0], position:-mapSize/2, fillColor:config.colors.mountain}));
+                            queue.splice(adjIndex, 1);
+                        }
+                    }
+                    this.mountains.push(mountain);
+                    count += mountain.length;
+                }
+            }
+            // forests
+            {
+                this.forests = [];
+                count = 0;
+                while (queue.length > 0 && count < (config.probs.forest * polys.length)) {
+                    var index = Math.floor(Math.random() * queue.length);
+                    var polyIndex = queue[index];
+                    queue.splice(index, 1);
+                    var num = Math.ceil(Math.random() * config.forestSize);
+                    var forest = [];
+                    for (var i = 0; i < num && queue.length > 0; i++) {
+                        var poly = polys[polyIndex].poly;
+                        forest.push(new Path({segments:poly, pivot:[0, 0], position:-mapSize/2, fillColor:config.colors.forest}));
+                        var adjPolys = voronoi.getAdjacentPolys(polyIndex);
+                        polyIndex = -1;
+                        for (var j = 0; j < adjPolys.length; j++) {
+                            var adjPoly = polys[adjPolys[j]].poly;
+                            var adjIndex = queue.indexOf(adjPolys[j]);
+                            if (adjIndex != -1) {
+                                polyIndex = adjPolys[j];
+                                queue.splice(adjIndex, 1);
+                                break;
+                            }
+                        }
+                        if (polyIndex == -1) {
+                            break;
+                        }
+                    }
+                    if (forest.length > 0) {
+                        this.forests.push(forest);
+                        count += forest.length;
+                    }
+                }
+            }
+        }
+
         view.center = [0, 0];
 
         var minDist = 40;
-        var mapSize = new Size(1000, 2000);
         var poisson = new PoissonSampler(mapSize, minDist, 10);
         var voronoi = new Voronoi(poisson.getPoints(), new Rectangle(new Point(0, 0), mapSize));
+        var bg = new Path.Rectangle({point:-mapSize / 2, size:mapSize, fillColor:config.colors.grass});
 
         var polys = voronoi.getPolys();
-        var paths = [];
-        for (var i = 0; i < polys.length; i++) {
-            var path = new Path(polys[i].concat(polys[i][0]));
-            path.pivot = [0, 0];
-            path.position = -mapSize / 2;
-            path.fillColor = '#00cc00';
-            path.strokeColor = '#003300';
-            paths.push(path);
+        // var paths = [];
+        // for (var i = 0; i < polys.length; i++) {
+        //     var path = new Path(polys[i].concat(polys[i][0]));
+        //     path.pivot = [0, 0];
+        //     path.position = -mapSize / 2;
+        //     path.strokeColor = '#ffffff';
+        //     paths.push(path);
 
-            var r = path.rasterize();
-            path.remove();
-        }
+        //     var r = path.rasterize();
+        //     path.remove();
+        // }
+        var map = new Map(voronoi);
+        // for (var i = 0; i < polys.length; i++) {
+        //     var t = new PointText({
+        //         content: i.toString(),
+        //         fillColor: '#000000',
+        //         point: voronoi.getPoint(i) - mapSize / 2
+        //     });
+        // }
 
         var p1 = new Player([-config.startGap / 2, 0], '#ff0000', 's', 'd');
         var p2 = new Player([+config.startGap / 2, 0], '#0000ff', 'left', 'right');
